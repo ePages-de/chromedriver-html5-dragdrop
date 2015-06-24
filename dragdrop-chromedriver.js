@@ -37,81 +37,103 @@ module.exports = function (webdriver, waitTime) {
      * @return {!webdriver.ActionSequence} A self reference.
      */
     dragAndDrop = function (element, location) {
-        var targetElement; // will always hold the actual DOM element (see `findTargetElement`)
+        var targetElement, // will always hold the actual DOM element (see `findTargetElement`)
+            elementLocation = {},
+            targetLocation = {};
 
         var performDragAndDrop = function () {
             return webdriver.actions().mouseMove(element).perform()
-            .then(wait)
+                .then(wait)
 
-            .then(function () {
-                return webdriver.actions().mouseDown(element).perform();
-            })
-            .then(wait)
+                .then(function () {
+                    return webdriver.actions().mouseDown(element).perform();
+                })
+                .then(wait)
 
-            .then(function () {
-                return webdriver.executeScript(function dragstartIfDraggable(_element) {
-                    if (_element.draggable) {
-                        _element.dispatchEvent(new Event('dragstart', {bubbles: true}));
+                .then(function () {
+                    return webdriver.executeScript(function dragstartIfDraggable(_element) {
+                        if (_element.draggable) {
+                            _element.dispatchEvent(new Event('dragstart', {bubbles: true}));
+                        }
+                        return _element.draggable;
+                    }, element)
+                        .then(function (draggable) {
+                            if (!draggable) {
+                                throw new Error('trying to drag non-draggable element');
+                            }
+                        });
+                })
+                .then(wait)
+
+                .then(function () {
+                    return webdriver.actions().mouseMove(location).perform();
+                })
+                .then(function () {
+                    return element.getLocation();
+                })
+                .then(function findTargetElement(_elementLocation) {
+                    elementLocation = _elementLocation;
+
+                    return webdriver.executeScript(function (_from, _to) {
+                        return _to.nodeType ? _to : document.elementFromPoint(_from.x + _to.x, _from.y + _to.y);
+                    }, elementLocation, location)
+                        .then(function (_targetElement) {
+                            targetElement = _targetElement;
+                        });
+                })
+                .then(function findTargetLocation() {
+                    // dragAndDrop by an offset
+                    if (typeof location.x === 'number') {
+                        targetLocation.x = elementLocation.x + location.x;
+                        targetLocation.y = elementLocation.y + location.y;
+
+                        // return a Promise that resolves with nothing
+                        return webdriver.actions().mouseMove(location).perform();
                     }
-                    return _element.draggable;
-                }, element)
-                .then(function (draggable) {
-                    if (!draggable) {
-                        throw new Error('trying to drag non-draggable element');
-                    }
+
+                    // dragAndDrop onto another element
+                    return location.getLocation().then(function (_targetLocation) {
+                        targetLocation = _targetLocation;
+                    });
+                })
+                .then(function () {
+                    return webdriver.executeScript(function dragoverAndCheckIfValidDropTarget(_targetElement, _targetLocation) {
+                        var ableToDrop = false,
+                            syntheticDragoverEvent = new Event('dragover', {bubbles: true});
+
+                        // yes baby, we need to stub this, since `syntheticDragoverEvent.defaultPrevented` will be false!
+                        var oldPreventDefault = syntheticDragoverEvent.preventDefault;
+                        syntheticDragoverEvent.preventDefault = function () {
+                            ableToDrop = true;
+                            oldPreventDefault.call(this);
+                        };
+                        syntheticDragoverEvent.pageX = _targetLocation.x;
+                        syntheticDragoverEvent.pageY = _targetLocation.y;
+                        _targetElement.dispatchEvent(syntheticDragoverEvent);
+
+                        return ableToDrop;
+                    }, targetElement, targetLocation)
+                        .then(function (ableToDrop) {
+                            if (!ableToDrop) {
+                                throw new Error('trying to drop on invalid drop target');
+                            }
+                        });
+                })
+                .then(wait)
+
+                .then(function () {
+                    return webdriver.executeScript(function (_targetElement, _targetLocation) {
+                        var syntheticDropEvent = new Event('drop', {bubbles: true});
+                        syntheticDropEvent.pageX = _targetLocation.x;
+                        syntheticDropEvent.pageY = _targetLocation.y;
+                        _targetElement.dispatchEvent(syntheticDropEvent);
+                    }, targetElement, targetLocation);
+                })
+                .then(function () {
+                    return webdriver.executeScript(function (_targetElement) {
+                        _targetElement.dispatchEvent(new Event('dragend', {bubbles: true}));
+                    }, targetElement);
                 });
-            })
-            .then(wait)
-
-            .then(function () {
-                return webdriver.actions().mouseMove(location).perform();
-            })
-            .then(function findTargetElement() {
-                return webdriver.executeScript(function (_from, _to) {
-                    return _to.nodeType
-                        ? _to
-                        : document.elementFromPoint(
-                        _from.offsetLeft + _from.offsetWidth + _to.x,
-                        _from.offsetTop + _from.offsetHeight + _to.y
-                    );
-                }, element, location)
-                .then(function (_targetElement) {
-                    targetElement = _targetElement;
-                });
-            })
-            .then(function () {
-                return webdriver.executeScript(function dragoverAndCheckIfValidDropTarget(_targetElement) {
-                    var ableToDrop = false,
-                        syntheticDragoverEvent = new Event('dragover', {bubbles: true});
-
-                    // yes baby, we need to stub this, since `syntheticDragoverEvent.defaultPrevented` will be false!
-                    var oldPreventDefault = syntheticDragoverEvent.preventDefault;
-                    syntheticDragoverEvent.preventDefault = function () {
-                        ableToDrop = true;
-                        oldPreventDefault.call(this);
-                    };
-                    _targetElement.dispatchEvent(syntheticDragoverEvent);
-
-                    return ableToDrop;
-                }, targetElement)
-                .then(function (ableToDrop) {
-                    if (!ableToDrop) {
-                        throw new Error('trying to drop on invalid drop target');
-                    }
-                });
-            })
-            .then(wait)
-
-            .then(function () {
-                return webdriver.executeScript(function (_targetElement) {
-                    _targetElement.dispatchEvent(new Event('drop', {bubbles: true}));
-                }, targetElement);
-            })
-            .then(function () {
-                return webdriver.executeScript(function (_targetElement) {
-                    _targetElement.dispatchEvent(new Event('dragend', {bubbles: true}));
-                }, targetElement);
-            });
         };
 
         var actions = this.actions_;
