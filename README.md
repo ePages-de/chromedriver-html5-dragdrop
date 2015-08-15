@@ -42,5 +42,5 @@ Because of this, but also due to limits of the original `dragAndDrop` API, **you
 ## How it works
 Basically it monkey patches `webdriver.ActionSequence`, overriding its `dragAndDrop` function 
 with one that remains fully API compatible to [the original one](https://github.com/SeleniumHQ/selenium/blob/master/javascript/webdriver/actionsequence.js#L218), 
-but internally triggers the `dragstart`, `dragover`, `drop` and `dragend` events in the browser context. 
+but internally triggers the `dragstart`, `drag`, `dragover`, `drop` and `dragend` events in the browser context. 
 There are some checks to prevent this approach from performing drag and drop operations a real user wouldn't be able to perform.
