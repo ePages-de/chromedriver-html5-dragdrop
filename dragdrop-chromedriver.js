@@ -52,8 +52,13 @@ module.exports = function (webdriver, waitTime) {
 
                 .then(function () {
                     return webdriver.executeScript(function dragstartIfDraggable(_element) {
+                        var syntheticDragStartEvent = new Event('dragstart', {bubbles: true});
+
+                        syntheticDragStartEvent.pageX = _element.offsetLeft;
+                        syntheticDragStartEvent.pageY = _element.offsetTop;
+
                         if (_element.draggable) {
-                            _element.dispatchEvent(new Event('dragstart', {bubbles: true}));
+                            _element.dispatchEvent(syntheticDragStartEvent);
                         }
                         return _element.draggable;
                     }, element)
@@ -95,6 +100,15 @@ module.exports = function (webdriver, waitTime) {
                     return location.getLocation().then(function (_targetLocation) {
                         targetLocation = _targetLocation;
                     });
+                })
+                .then(function () {
+                    return webdriver.executeScript(function (_element, _targetLocation) {
+                        var syntheticDragEvent = new Event('drag', {bubbles: true});
+
+                        syntheticDragEvent.pageX = _targetLocation.x;
+                        syntheticDragEvent.pageY = _targetLocation.y;
+                        _element.dispatchEvent(syntheticDragEvent);
+                    }, element, targetLocation);
                 })
                 .then(function () {
                     return webdriver.executeScript(function dragoverAndCheckIfValidDropTarget(_targetElement, _targetLocation) {
