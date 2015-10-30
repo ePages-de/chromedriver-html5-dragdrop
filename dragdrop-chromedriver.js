@@ -144,9 +144,17 @@ module.exports = function (webdriver, waitTime) {
                     }, targetElement, targetLocation);
                 })
                 .then(function () {
-                    return webdriver.executeScript(function (_targetElement) {
-                        _targetElement.dispatchEvent(new Event('dragend', {bubbles: true}));
-                    }, targetElement);
+                    return webdriver.executeScript(function (_sourceElement) {
+                        _sourceElement.dispatchEvent(new Event('dragend', {bubbles: true}));
+                    }, element).then(function (res) {
+                        return res;
+                    }, function (err) {
+                        // the source element might have been removed, so ignore this error here
+                        if (err.name !== 'StaleElementReferenceError') throw err;
+                    });
+                })
+                .then(function () {
+                    return webdriver.actions().mouseUp(targetElement).perform();
                 });
         };
 
