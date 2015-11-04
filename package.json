@@ -1,6 +1,6 @@
 {
   "name": "chromedriver-html5-dragdrop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Chromedriver HTML5 drag and drop fix",
   "main": "dragdrop-chromedriver.js",
   "scripts": {
