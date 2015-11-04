@@ -16,6 +16,13 @@ module.exports = function (webdriver, waitTime) {
         return actionsInstance;
     };
 
+    function recoverFromStaleElementReferenceError (err) {
+        // the source element might have been removed, so ignore this error here
+        if (err.name !== 'StaleElementReferenceError') {
+            throw err;
+        }
+    }
+
     /**
      * Fixed `dragAndDrop` function that works in Chromedriver
      * by triggering the `dragstart`, `dragover`, `drop` and `dragend` events in the browser context.
@@ -146,15 +153,12 @@ module.exports = function (webdriver, waitTime) {
                 .then(function () {
                     return webdriver.executeScript(function (_sourceElement) {
                         _sourceElement.dispatchEvent(new Event('dragend', {bubbles: true}));
-                    }, element).then(function (res) {
-                        return res;
-                    }, function (err) {
-                        // the source element might have been removed, so ignore this error here
-                        if (err.name !== 'StaleElementReferenceError') throw err;
-                    });
+                    }, element)
+                        .thenCatch(recoverFromStaleElementReferenceError);
                 })
                 .then(function () {
-                    return webdriver.actions().mouseUp(targetElement).perform();
+                    return webdriver.actions().mouseUp(targetElement).perform()
+                        .thenCatch(recoverFromStaleElementReferenceError);
                 });
         };
 
