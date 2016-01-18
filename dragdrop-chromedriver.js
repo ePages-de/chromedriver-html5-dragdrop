@@ -90,7 +90,7 @@ module.exports = function (webdriver, waitTime) {
                         return _to.nodeType ? _to : document.elementFromPoint(_from.x + _to.x, _from.y + _to.y);
                     }, elementLocation, location)
                         .then(function (_targetElement) {
-                            if (!targetElement) {
+                            if (targetElement === null) {
                                 throw new Error('drop target is outside of the viewport!');
                             }
                             targetElement = _targetElement;
