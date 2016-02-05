@@ -3,10 +3,6 @@
 module.exports = function (webdriver, waitTime) {
     'use strict';
 
-    var wait = function () {
-        return webdriver.sleep(waitTime || 1);
-    };
-
     /* Monkey patch `webdriver.ActionSequence`, overriding its `dragAndDrop` function with a fixed one */
     var dragAndDrop,
         originalActions = webdriver.actions;
@@ -16,11 +12,51 @@ module.exports = function (webdriver, waitTime) {
         return actionsInstance;
     };
 
+    function wait(x) {
+        return waitTime ? webdriver.sleep(waitTime).then(() => x) : x;
+    }
+
+    function addPoints(a, b) {
+        return {
+            x: a.x + b.x,
+            y: a.y + b.y
+        };
+    }
+
+    function roundPoint(a) {
+        return {
+            x: Math.round(a.x),
+            y: Math.round(a.y)
+        };
+    }
+
     function recoverFromStaleElementReferenceError (err) {
         // the source element might have been removed, so ignore this error here
         if (err.name !== 'StaleElementReferenceError') {
             throw err;
         }
+    }
+
+    function findElementFromElementOrAbsoluteLocation(elementOrAbsoluteLocation) {
+        function getLocation(_location) {
+            return _location.nodeType ? _location : document.elementFromPoint(_location.x, _location.y);
+        }
+
+        return webdriver.executeScript(getLocation, elementOrAbsoluteLocation).then(function (element) {
+            if (element === null) {
+                return Promise.reject(new Error('cannot find element at location ' +
+                    JSON.stringify(elementOrAbsoluteLocation)));
+            }
+            return element;
+        });
+    }
+
+    function findLocationFromElementOrRelativeLocation(elementOrRelativeLocation, anchorElement) {
+        if (typeof elementOrRelativeLocation.getLocation === 'function') {
+            return elementOrRelativeLocation.getLocation();
+        }
+
+        return anchorElement.getLocation().then(anchorLocation => addPoints(anchorLocation, elementOrRelativeLocation));
     }
 
     /**
@@ -38,27 +74,28 @@ module.exports = function (webdriver, waitTime) {
      * Convenience function for performing a "drag and drop" manuever. The target
      * element may be moved to the location of another element, or by an offset (in
      * pixels).
-     * @param {!webdriver.WebElement} element The element to drag.
-     * @param {(!webdriver.WebElement|{x: number, y: number})} location The
+     * @param {!webdriver.WebElement} sourceElement The element to drag.
+     * @param {(!webdriver.WebElement|{x: number, y: number})} targetElementOrLocation The
      *     location to drag to, either as another WebElement or an offset in pixels.
      * @return {!webdriver.ActionSequence} A self reference.
      */
-    dragAndDrop = function (element, location) {
-        var targetElement, // will always hold the actual DOM element (see `findTargetElement`)
-            elementLocation = {},
-            targetLocation = {};
-
-        var performDragAndDrop = function () {
-            return webdriver.actions().mouseMove(element).perform()
+    dragAndDrop = function (sourceElement, targetElementOrLocation) {
+        // get absolute source location
+        const performDragAndDrop = () => sourceElement.getLocation().then(roundPoint).then(sourceLocation => {
+            // get absolute target location
+            return findLocationFromElementOrRelativeLocation(targetElementOrLocation, sourceElement)
+            .then(roundPoint).then(targetLocation => {
+                // move mouse onto source element
+                return webdriver.actions().mouseMove(sourceLocation).perform()
                 .then(wait)
 
-                .then(function () {
-                    return webdriver.actions().mouseDown(element).perform();
-                })
+                // mouse down on source element
+                .then(() => webdriver.actions().mouseDown(sourceElement).perform())
                 .then(wait)
 
-                .then(function () {
-                    return webdriver.executeScript(function dragstartIfDraggable(_element) {
+                // simulate event dragstart on source element
+                .then(() => {
+                    function dragstartIfDraggable(_element) {
                         var syntheticDragStartEvent = new Event('dragstart', {bubbles: true});
 
                         syntheticDragStartEvent.pageX = _element.offsetLeft;
@@ -68,62 +105,40 @@ module.exports = function (webdriver, waitTime) {
                             _element.dispatchEvent(syntheticDragStartEvent);
                         }
                         return _element.draggable;
-                    }, element)
-                        .then(function (draggable) {
-                            if (!draggable) {
-                                throw new Error('trying to drag non-draggable element');
-                            }
-                        });
+                    }
+
+                    return webdriver.executeScript(dragstartIfDraggable, sourceElement).then(draggable => {
+                        if (!draggable) {
+                            return Promise.reject(new Error('trying to drag non-draggable element'));
+                        }
+                    });
                 })
                 .then(wait)
 
-                .then(function () {
-                    return webdriver.actions().mouseMove(location).perform();
-                })
-                .then(function () {
-                    return element.getLocation();
-                })
-                .then(function findTargetElement(_elementLocation) {
-                    elementLocation = _elementLocation;
-
-                    return webdriver.executeScript(function (_from, _to) {
-                        return _to.nodeType ? _to : document.elementFromPoint(_from.x + _to.x, _from.y + _to.y);
-                    }, elementLocation, location)
-                        .then(function (_targetElement) {
-                            if (targetElement === null) {
-                                throw new Error('drop target is outside of the viewport!');
-                            }
-                            targetElement = _targetElement;
-                        });
-                })
-                .then(function findTargetLocation() {
-                    // dragAndDrop by an offset
-                    if (typeof location.x === 'number') {
-                        targetLocation.x = elementLocation.x + location.x;
-                        targetLocation.y = elementLocation.y + location.y;
-
-                        // return a Promise that resolves with nothing
-                        return webdriver.actions().mouseMove(location).perform();
-                    }
-
-                    // dragAndDrop onto another element
-                    return location.getLocation().then(function (_targetLocation) {
-                        targetLocation = _targetLocation;
-                    });
-                })
-                .then(function () {
-                    return webdriver.executeScript(function (_element, _targetLocation) {
+                // simulate event drag on source element
+                .then(() => {
+                    function drag(_element, _location) {
                         var syntheticDragEvent = new Event('drag', {bubbles: true});
 
-                        syntheticDragEvent.pageX = _targetLocation.x;
-                        syntheticDragEvent.pageY = _targetLocation.y;
+                        syntheticDragEvent.pageX = _location.x;
+                        syntheticDragEvent.pageY = _location.y;
                         _element.dispatchEvent(syntheticDragEvent);
-                    }, element, targetLocation);
+                    }
+
+                    return webdriver.executeScript(drag, sourceElement, sourceLocation);
                 })
-                .then(function () {
-                    return webdriver.executeScript(function dragoverAndCheckIfValidDropTarget(_targetElement, _targetLocation) {
-                        var ableToDrop = false,
-                            syntheticDragoverEvent = new Event('dragover', {bubbles: true});
+                .then(wait)
+
+                // move mouse to target location
+                .then(() => webdriver.actions().mouseMove(targetLocation).perform())
+                .then(wait)
+
+                // simulate event dragover on (current) target element
+                .then(() => findElementFromElementOrAbsoluteLocation(targetLocation))
+                .then(targetElement => {
+                    function dragoverAndCheckIfValidDropTarget(_element, _location) {
+                        var syntheticDragoverEvent = new Event('dragover', {bubbles: true});
+                        var ableToDrop = false;
 
                         // yes baby, we need to stub this, since `syntheticDragoverEvent.defaultPrevented` will be false!
                         var oldPreventDefault = syntheticDragoverEvent.preventDefault;
@@ -131,39 +146,56 @@ module.exports = function (webdriver, waitTime) {
                             ableToDrop = true;
                             oldPreventDefault.call(this);
                         };
-                        syntheticDragoverEvent.pageX = _targetLocation.x;
-                        syntheticDragoverEvent.pageY = _targetLocation.y;
-                        _targetElement.dispatchEvent(syntheticDragoverEvent);
+                        syntheticDragoverEvent.pageX = _location.x;
+                        syntheticDragoverEvent.pageY = _location.y;
+                        _element.dispatchEvent(syntheticDragoverEvent);
 
                         return ableToDrop;
-                    }, targetElement, targetLocation)
-                        .then(function (ableToDrop) {
-                            if (!ableToDrop) {
-                                throw new Error('trying to drop on invalid drop target');
-                            }
-                        });
+                    }
+
+                    return webdriver.executeScript(dragoverAndCheckIfValidDropTarget, targetElement, targetLocation)
+                    .then(ableToDrop => {
+                        if (!ableToDrop) {
+                            return Promise.reject(new Error('trying to drop on invalid drop target'));
+                        }
+                    });
                 })
                 .then(wait)
 
-                .then(function () {
-                    return webdriver.executeScript(function (_targetElement, _targetLocation) {
+                // simulate event drop on (current) target element
+                .then(() => findElementFromElementOrAbsoluteLocation(targetLocation))
+                .then(targetElement => {
+                    function drop(_targetElement, _targetLocation) {
                         var syntheticDropEvent = new Event('drop', {bubbles: true});
                         syntheticDropEvent.pageX = _targetLocation.x;
                         syntheticDropEvent.pageY = _targetLocation.y;
                         _targetElement.dispatchEvent(syntheticDropEvent);
-                    }, targetElement, targetLocation);
+                    }
+
+                    return webdriver.executeScript(drop, targetElement, targetLocation);
                 })
-                .then(function () {
-                    return webdriver.executeScript(function (_sourceElement) {
+                .then(wait)
+
+                // simulate event dragend on source element
+                .then(() => {
+                    function dragend(_sourceElement) {
                         _sourceElement.dispatchEvent(new Event('dragend', {bubbles: true}));
-                    }, element)
+                    }
+
+                    return webdriver.executeScript(dragend, sourceElement)
                         .thenCatch(recoverFromStaleElementReferenceError);
                 })
-                .then(function () {
+                .then(wait)
+
+                // mouse up on (current) target element
+                .then(() => findElementFromElementOrAbsoluteLocation(targetLocation))
+                .then(targetElement => {
                     return webdriver.actions().mouseUp(targetElement).perform()
                         .thenCatch(recoverFromStaleElementReferenceError);
-                });
-        };
+                })
+                .then(wait);
+            });
+        });
 
         var actions = this.actions_;
 
