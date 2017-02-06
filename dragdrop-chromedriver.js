@@ -183,7 +183,7 @@ module.exports = function (webdriver, waitTime) {
                     }
 
                     return webdriver.executeScript(dragend, sourceElement)
-                        .thenCatch(recoverFromStaleElementReferenceError);
+                        .catch(recoverFromStaleElementReferenceError);
                 })
                 .then(wait)
 
@@ -191,7 +191,7 @@ module.exports = function (webdriver, waitTime) {
                 .then(() => findElementFromElementOrAbsoluteLocation(targetLocation))
                 .then(targetElement => {
                     return webdriver.actions().mouseUp(targetElement).perform()
-                        .thenCatch(recoverFromStaleElementReferenceError);
+                        .catch(recoverFromStaleElementReferenceError);
                 })
                 .then(wait);
             });
