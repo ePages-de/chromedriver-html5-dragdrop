@@ -89,9 +89,9 @@ module.exports = function (webdriver, waitTime) {
                 return webdriver.actions().mouseMove(sourceLocation).perform()
                 .then(wait)
 
-                // mouse down on source element
-                .then(() => webdriver.actions().mouseDown(sourceElement).perform())
-                .then(wait)
+                // mouse down on source element - Chrome 62 doesn't like this
+                // .then(() => webdriver.actions().mouseDown(sourceElement).perform())
+                // .then(wait)
 
                 // simulate event dragstart on source element
                 .then(() => {
@@ -219,3 +219,4 @@ module.exports = function (webdriver, waitTime) {
         return this;
     };
 };
+
