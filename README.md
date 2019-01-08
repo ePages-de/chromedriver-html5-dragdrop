@@ -4,7 +4,7 @@
 ## Problem statement
 If you're using the HTML5 drag and drop implementation in you web app and want to test its behaviour
 with Selenium and Chromedriver, you're out of luck due to 
-[**this bug**](https://code.google.com/p/chromedriver/issues/detail?id=841):
+[**this bug**](https://crbug.com/chromedriver/2695):
 
 Chromedriver can handle `clickAndHold`, `move` and `release`, but has a bug in this. There is a `event.button` 
 attribute in every Javascript `MouseEvent` object. This is set to `-1` if nothing is clicked
